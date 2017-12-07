@@ -1,0 +1,374 @@
+---
+title: "Challenge B"
+author: 'Sebastian Mantilla and Valentina Narvaez Trujillo '
+date: December 8, 2017
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## GitHub link
+
+Here's the link to the repository: https://github.com/heymantilla/Challenge-B-S.-Mantilla-and-V.-Narvaez
+
+## **Task 1B - Predicting house prices in Ames, Iowa (continued)**
+```{r install packages, waning=FALSE, include=FALSE}
+load.libraries <- c('tidyverse', 'randomForest', 'np')
+install.lib <- load.libraries[!load.libraries %in% installed.packages()]
+for(libs in install.lib) install.packages(libs, dependencies = TRUE)
+sapply(load.libraries, require, character = TRUE)
+
+```
+
+```{r libraries, warning=FALSE, include=FALSE}
+library(randomForest) 
+library(tidyverse)
+library(np)
+```
+
+```{r uploading the data, include=FALSE}
+
+train <- read_csv("C:/Users/Sebastian/Desktop/R-Programming/Challenge B/Final answers/train.csv")
+test <- read_csv("C:/Users/Sebastian/Desktop/R-Programming/Challenge B/Final answers/test.csv")
+
+############# CHANGE THE FILE PATH !!! ################
+
+```
+
+
+### **Step 1**
+The Machine Learning technique method that we chose is ***random forest***. It is an algorithm  that generates robust predictions by creating a "forest" with a number of decision sheets; the more decision sheets (so the more trees) the more the prediction  will be  robust.
+
+
+### **Step 2**
+To use random forest, we start by transforming  character values into factors and then we handle the missing data by removing the variables that have more than a 100 missing values. Afterwards, we remove the observations with missing values.
+```{r character vars to factors, include=FALSE}
+#We start by transforming character values into factors
+train[sapply(train, is.character)] <- lapply(train[sapply(train, is.character)], as.factor)
+sapply(train,class)
+```
+
+```{r missing data1, echo=FALSE}
+remove.vars <- train %>% summarise_all(.funs = funs(sum(is.na(.)))) %>% gather(key = "feature", value = "missing.observations") %>% filter(missing.observations > 100) %>% select(feature) %>% unlist
+
+train <- train %>% select(- one_of(remove.vars))
+```
+
+```{r missing data2, include=FALSE}
+
+train %>% summarise_all(.funs = funs(sum(is.na(.)))) %>% gather(key = "feature", value = "missing.observations") %>% filter(missing.observations > 0)
+
+train <- train %>% filter(is.na(GarageType) == FALSE, is.na(MasVnrType) == FALSE, is.na(BsmtFinType2) == FALSE, is.na(BsmtExposure) == FALSE, is.na(Electrical) == FALSE)
+# remove rows with NA in some of these variables, check if you take all missing values like this
+
+# make sure it's all clean : Yes
+train %>% summarise_all(.funs = funs(sum(is.na(.)))) %>% gather(key = "feature", value = "missing.observations") %>% filter(missing.observations > 0)
+```
+
+Then, using the package *'randomforest'*, we run a regression creating a forest of 50 trees (ntree=50). mtry=5 means that we use 3  of the 5 variables at each split to estimate SalePrice.
+```{r regression random_forest, echo=FALSE}
+modelForest<-randomForest(SalePrice~ MSZoning + LotArea + Neighborhood  + YearBuilt + OverallQual, mtry= 3, data=train, ntree=50)
+#lower mtry means less correlation between the trees at a cost of a decrease in the strength of each tree
+modelForest
+```
+
+
+### **Step 3.**
+```{r test chracter to factor, include=FALSE}
+test[sapply(test, is.character)] <- lapply(test[sapply(test, is.character)], as.factor)
+sapply(test,class)
+```
+
+Using the model predicted by random forest we obtained the prediction table that follows:
+```{r prediction_modelForest, echo=FALSE}
+predictionForest <- data.frame(Id = test$Id, SalePrice_predict = predict(modelForest, test, type="response"))
+# We use data.frame to select the raw names of interest,
+# Predict is used to select the regression made using random forest
+head(predictionForest)
+```
+Now, we compared the prediction given by random forest with the linear regression performed using the same random variables.
+
+By eyeballing the first 6 raws of the predictions, we observe they are different.
+
+```{r linear regression, echo=FALSE}
+model1<-lm(SalePrice ~MSZoning + LotArea + Neighborhood +      YearBuilt + OverallQual, data=train, na.action(na.omit(train)))
+
+prediction <- data.frame(Id = test$Id, SalePrice= predict(model1, test, type="response"))
+head(prediction)
+```
+
+Linear regressions are used when the data has a linear shape, however, when OLS is unable to capture non linear features. 
+Random Forest can capture the non linearity in the data, therefore the predictions obtained are not the same as the predictions with the OLS model.
+
+
+
+## Task 2B - Overfitting in Machine Learning (continued)
+```{r Task2 setup, include=FALSE}
+# As this task is the follow-up to Task 2A of Challenge A, we will work with the exact same model and the same data.
+
+set.seed(1)         #For replication 
+n <- 150            #150 independent draws
+x <- rnorm(n,0,1) 
+e <- rnorm(n,0,1)   #We create the variable e that accounts for the 'noise'
+y <- x^3 + e        #The true model
+
+datachallengeB <- data.frame(x,y)    #We create our data set by storing the y and x in it.
+dim(datachallengeB)                  #The table created has indeed two columns and 150 rows. 
+
+datachallengeB$set <- sample(c("training", "test"),size=150, replace=TRUE, prob=c(0.8,0.2))   
+#We create the variable "set", which takes 2 "values": 
+#training (with probability 0.8) and test (with probability 0.2)
+
+```
+
+```{r Task setup2, include=FALSE}
+# we can take a look at the first rows of our data.
+head(datachallengeB)
+```
+
+### Step 1
+
+First, we estimate the model by doing a low flexibility local linear model only in the training data. We use the package *np*.
+We call this model *ll.fit.lowflex*
+```{r Step 1,include=FALSE}
+# package np require
+ll.fit.lowflex <- npreg(y~x, data=subset(datachallengeB,set=="training"), bws=0.5, regtype="ll")
+summary(ll.fit.lowflex)
+fittedlow <- fitted(ll.fit.lowflex)  #We store the estimated values, as we will need them for later.
+
+```
+
+
+### Step 2
+
+Now, we estimate our model by doing a high flexibility local linear model only in the training data.
+We call this model *ll.fit.highflex*
+```{r Step 2, include=FALSE}
+
+ll.fit.highflex <- npreg(y~x, data=subset(datachallengeB,set=="training"), bws=0.01, regtype="ll")
+summary(ll.fit.highflex)
+fittedhigh <- fitted(ll.fit.highflex)  #We store the estimated values, as we will need them later.
+
+```
+
+### Step 3
+
+Here, we do a scatter plot of our x and y variables from our data (points in black), its true regression line (line in black), and the predictions we got in the previous 2 steps: the low flexibility prediction (in red) and the high flexibility prediction (in blue).
+
+```{r Step 3 plot, echo=FALSE}
+ggplot(data=subset(datachallengeB,set=="training")) +
+  geom_point(mapping=aes(x=x, y=y), color="black")+
+  geom_smooth(mapping=aes(x=x, y=y), color="black", se=FALSE)+
+  geom_line(mapping=aes(x=x, y=fittedlow), color="red")+
+  geom_line(mapping=aes(x=x, y=fittedhigh), color="blue")
+```
+
+### Step 4
+
+Between the 2 models, the predictions from the high flexibility are more variable.
+The low flexibility prediction has the least bias.
+
+
+
+### Step 5
+
+In this step, we have to do the same plot as in Step 3, but on the test data.
+For this, we have to estimate our model by doing a high and a low flexibility local linear regression on the test data only.
+Then, we can do our scatter plot:a scatter plot of our x and y variables from our data (points in black), its true regression line (line in black), the low flexibility prediction (in red) and the high flexibility prediction (in blue).
+
+```{r Step 5 regressions, include=FALSE}
+
+ll.fit.lowflex2 <- npreg(y~x, data=subset(datachallengeB,set=="test"), bws=0.5, regtype="ll")
+summary(ll.fit.lowflex2)
+fittedlow2 <- fitted(ll.fit.lowflex2)
+
+
+ll.fit.highflex2 <- npreg(y~x, data=subset(datachallengeB,set=="test"), bws=0.01, regtype="ll")
+summary(ll.fit.highflex2)
+fittedhigh2 <- fitted(ll.fit.highflex2)
+
+```
+
+```{r Step 5 graph, echo=FALSE}
+
+ggplot(data=subset(datachallengeB,set=="test")) +
+  geom_point(mapping=aes(x=x, y=y), color="black")+
+  geom_smooth(mapping=aes(x=x, y=y), color="black", se=FALSE)+
+  geom_line(mapping=aes(x=x, y=fittedlow2), color="red")+
+  geom_line(mapping=aes(x=x, y=fittedhigh2), color="blue")
+
+```
+Between the 2 models, the predictions from the high flexibility are more variable.
+
+The low flexibility prediction has the least bias.
+
+
+### Step 6
+
+Here, we simply create a vector of bandwidth going from 0.01 to 0.5, with a step of 0.001.
+We can see that our vector indeed starts with 0.01 and finishes with 0.5.
+Plus, we see there are 491 elements in our vector. We will need this number in future steps.
+
+```{r Step 6, echo=FALSE}
+
+bandwidth <- c(seq(0.01, 0.5, 0.001))
+head(bandwidth)
+tail(bandwidth)
+length(bandwidth)
+
+```
+
+
+### Step 7
+
+In this step, we need to perform a local linear regression on the training data using each of the bandwidth in the vector we created in the previous step.
+This means we have to perform a local regression with bandwidth equal to **0.01**, another one with **0.011**, and so on until **0.5**.
+You can see in the code that we performed a loop for this. The output, being extremely large, was not included in our report.
+
+```{r Step 7, include=FALSE}
+
+length(bandwidth)     # The length of our vector is 491, so there are 491 elements in it.
+                
+for(i in 1:491){
+  ll.fit.flex <- npreg(y~x, data=subset(datachallengeB,set=="training"), bws=bandwidth[i], regtype="ll")
+  summary(ll.fit.flex)
+  fitted <- fitted(ll.fit.flex)
+}
+
+```
+
+
+###  Step 8
+
+In this step, we have to compute, for each bandwidth, the MSE on the **training data**.
+
+After creating a vector called MSE1 in which each MSE value will be stored, we run the loop we did in *Step 7*. For each bandwidth, we extract the residuals of the model and them compute the MSE value, which will be stored in a vector we called MSE1.
+
+As you can see below, our vector MSE1 has all the 491 MSE values, for each bandwidth.
+
+```{r Step 8, include=FALSE}
+
+MSE1 <- c(rep(0,491))      #First, we create a vector called MSE1 in which each MSE for each bandwidth will be stored.
+MSE1
+length(MSE1)
+
+for(i in 1:491){
+  ll.fit.flex1 <- npreg(y~x, data=subset(datachallengeB,set=="training"), bws=bandwidth[i], regtype="ll")
+  summary(ll.fit.flex1)
+  fitted1 <- fitted(ll.fit.flex1)
+  res1 <- residuals(ll.fit.flex1)    # We store the residuals of the regression of bandwidth i in res1.
+  MSE1[i] <- mean(res1^2)            # We compute the MSE of the regression of bandwidth i, and it is stored in MSE1.
+}
+
+head(MSE1)
+
+```
+
+```{r Step 8 MSE1, echo=FALSE}
+
+length(MSE1)
+head(MSE1)
+
+```
+
+
+###  Step 9
+
+In this step, we have to compute, for each bandwidth, the MSE on the **test data**.
+
+After creating a vector called MSE1 in which each MSE value will be stored, we run the loop we did in *Step 7*. For each bandwidth, we extract the residuals of the model and them compute the MSE value, which will be stored in a vector we called MSE2.
+
+As you can see below, our vector MSE2 has all the 491 MSE values, for each bandwidth.
+
+```{r Step 9, include=FALSE}
+
+MSE2 <- c(rep(0,491))    #First, we create a vector called MSE2 in which each MSE for each bandwidth will be stored.
+length(MSE2)
+
+for(i in 1:491){
+  ll.fit.flex2 <- npreg(y~x, data=subset(datachallengeB,set=="test"), bws=bandwidth[i], regtype="ll")
+  summary(ll.fit.flex2)
+  fitted2 <- fitted(ll.fit.flex2)
+  res2 <- residuals(ll.fit.flex2)   # We store the residuals of the regression of bandwidth i in res2.
+  MSE2[i] <- mean(res2^2)           # We compute the MSE of the regression of bandwidth i, and it is stored in MSE2.
+}
+
+head(MSE2)
+
+```
+
+```{r Step 9 MSE2, echo=FALSE}
+
+length((MSE2))
+head(MSE2)
+
+```
+
+
+### Step 10
+
+In this final step, we draw, on the same plot, how the MSE on the training dta and the MSE on the test data change when the bandwidth increases.
+
+We first create a data set in which we store every bandwidth value from *0.01* to *0.5*, and each bandwidth value is associated to its corresponding MSE value.
+
+```{r Step 10 dataset, echo=FALSE}
+
+datastep10 <- data.frame(bandwidth,MSE1, MSE2)
+
+head(datastep10)
+
+```
+
+We draw the plot.
+The MSE values on the training data are in red and the ones on the test data are in blue (although, it should be noted that the graph isn't exactly the one we had to find).
+
+```{r Step 10, echo=FALSE}
+
+ggplot(data=datastep10) +
+  geom_line(mapping=aes(x=bandwidth, y=MSE1), color="red")+
+  geom_line(mapping=aes(x=bandwidth, y=MSE2), color="blue")
+
+```
+
+## Task 3
+
+```{r Task 3, eval=FALSE, include=FALSE}
+
+
+# We tried to do Task 3, we searched a lot on the internet and using the help function in RStudio, but we didn't manage to work on the data set provided. Therefore, no results are shown here, just an attempt to import the large dataset, which obviously failed.
+
+
+# Variable to hold the file name
+transactFile <- 'C:/Users/Sebastian/Desktop/R-Programming/Challenge B/Siren-stock-nov.csv'
+
+# Variable to hold the chunk size
+chunkSize <- 100000
+
+# Connection object, which opens the large file for reading
+con <- file(description=transactFile, open="r")   
+
+
+index <- 0
+chunkSize <- 100000
+con <- file(description=transactFile,open="r")   
+dataChunk <- read.table(con, nrows=chunkSize, header=T, fill=TRUE, sep=";")
+actualColumnNames <- names(dataChunk)
+
+repeat {
+  index <- index + 1
+  print(paste('Processing rows:', index * chunkSize))
+  
+  if (nrow(dataChunk) != chunkSize){
+    print('Processed all files!')
+    break}
+  
+  dataChunk <- read.table(con, nrows=chunkSize, skip=0, header=FALSE, fill = TRUE, sep=",", col.names = actualColumnNames)
+  
+  break
+}
+close(con)
+
+head(dataChunk)
+```
